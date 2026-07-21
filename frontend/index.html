@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>X AI Prototype</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <h1>X AI Prototype</h1>
+        <p>Describe an app or website and the prototype will return an initial build plan.</p>
+        <form id="prompt-form">
+          <textarea id="prompt" rows="4" placeholder="Build a modern landing page for a startup"></textarea>
+          <button type="submit">Generate</button>
+        </form>
+      </section>
+
+      <section class="panel" id="auth-panel">
+        <h2>Sign up</h2>
+        <form id="auth-form">
+          <input id="name" placeholder="Name" />
+          <input id="email" placeholder="Email" />
+          <input id="password" type="password" placeholder="Password" />
+          <button type="submit">Create account</button>
+        </form>
+        <p id="auth-status">Create an account to unlock billing and project history.</p>
+      </section>
+
+      <section class="panel" id="billing-panel" style="display: none;">
+        <h2>Billing</h2>
+        <form id="checkout-form">
+          <label for="plan">Choose a plan</label>
+          <select id="plan">
+            <option value="Basic">Basic - $30/month</option>
+            <option value="Middle">Middle - $80/month</option>
+            <option value="Unlimited">Unlimited - $200/month</option>
+          </select>
+          <button type="submit">Create checkout</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h2>Projects</h2>
+        <ul id="projects-list"></ul>
+      </section>
+
+      <section class="results" id="results"></section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
