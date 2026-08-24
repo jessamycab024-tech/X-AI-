@@ -29,7 +29,7 @@
 #### 3. **NO TOKEN VALIDATION ON PROTECTED ROUTES** - ✅ FIXED
 - **Before:** Routes like `/api/generate`, `/api/projects`, `/api/billing/checkout` had NO authentication
 - **After:** JWT token validation on all protected endpoints
-- **Location:** server.js, lines 343-379 (`extractToken`, `verifyAuthentication`, `isProtectedRoute`)
+- **Location:** server.js, lines 343-379 (`extractToken`, `verifyAuthentication`)
 - **Implementation:**
   - Bearer token extraction from Authorization header
   - JWT signature verification with HS256
@@ -53,7 +53,7 @@
   - `Access-Control-Allow-Origin` (configurable)
   - `Access-Control-Allow-Methods`
   - `Access-Control-Allow-Headers`
-  - OPTIONS preflight handler (line 558-562)
+  - OPTIONS preflight handler
 - **Impact:** Frontend can communicate with API from any origin (configurable)
 
 #### 5. **JSON INJECTION VULNERABILITY** - ✅ FIXED
