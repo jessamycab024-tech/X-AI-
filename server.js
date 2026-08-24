@@ -40,8 +40,8 @@ const config = loadConfig();
 // Security constants
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 60;
-const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-const AUTH_RATE_LIMIT_MAX_REQUESTS = 5; // 5 attempts per 15 minutes
+const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_RATE_LIMIT_MAX_REQUESTS = 5;
 const MAX_EMAIL_LENGTH = 255;
 const MAX_PASSWORD_LENGTH = 256;
 const MAX_NAME_LENGTH = 255;
@@ -50,31 +50,21 @@ const MIN_PASSWORD_LENGTH = 8;
 const rateLimit = new Map();
 const authRateLimit = new Map();
 
-// Email validation regex (RFC 5322 simplified)
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ============================================================================
-// LOGGING & MONITORING
+// LOGGING
 // ============================================================================
 
 function log(level, message, data = {}) {
   const timestamp = new Date().toISOString();
-  const logEntry = {
-    timestamp,
-    level,
-    message,
-    ...data
-  };
-  console.log(JSON.stringify(logEntry));
+  console.log(JSON.stringify({ timestamp, level, message, ...data }));
 }
 
 // ============================================================================
-// SECURITY UTILITIES - FIX #1, #2, #6, #10, #11, #13
+// SECURITY UTILITIES - FIX #1, #2, #6
 // ============================================================================
 
-/**
- * FIX #1: Hash password using bcrypt
- */
 async function hashPassword(password) {
   try {
     return await bcrypt.hash(password, config.bcryptRounds);
@@ -84,9 +74,6 @@ async function hashPassword(password) {
   }
 }
 
-/**
- * FIX #1: Compare plaintext password with hash
- */
 async function comparePassword(plaintext, hash) {
   try {
     return await bcrypt.compare(plaintext, hash);
@@ -96,92 +83,42 @@ async function comparePassword(plaintext, hash) {
   }
 }
 
-/**
- * FIX #2: Validate email format
- */
 function validateEmail(email) {
-  if (typeof email !== 'string') {
-    return 'Email must be a string.';
-  }
+  if (typeof email !== 'string') return 'Email must be a string.';
   const trimmed = email.trim();
-  
-  // FIX #11: Check email length
-  if (trimmed.length === 0) {
-    return 'Email cannot be empty.';
-  }
-  if (trimmed.length > MAX_EMAIL_LENGTH) {
-    return `Email must not exceed ${MAX_EMAIL_LENGTH} characters.`;
-  }
-  if (!EMAIL_REGEX.test(trimmed)) {
-    return 'Email format is invalid.';
-  }
+  if (trimmed.length === 0) return 'Email cannot be empty.';
+  if (trimmed.length > MAX_EMAIL_LENGTH) return `Email must not exceed ${MAX_EMAIL_LENGTH} characters.`;
+  if (!EMAIL_REGEX.test(trimmed)) return 'Email format is invalid.';
   return null;
 }
 
-/**
- * FIX #2: Validate password
- */
 function validatePassword(password) {
-  if (typeof password !== 'string') {
-    return 'Password must be a string.';
-  }
-  // FIX #11: Check password length
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
-  }
-  if (password.length > MAX_PASSWORD_LENGTH) {
-    return `Password must not exceed ${MAX_PASSWORD_LENGTH} characters.`;
-  }
+  if (typeof password !== 'string') return 'Password must be a string.';
+  if (password.length < MIN_PASSWORD_LENGTH) return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
+  if (password.length > MAX_PASSWORD_LENGTH) return `Password must not exceed ${MAX_PASSWORD_LENGTH} characters.`;
   return null;
 }
 
-/**
- * FIX #2: Validate name
- */
 function validateName(name) {
-  if (typeof name !== 'string') {
-    return 'Name must be a string.';
-  }
+  if (typeof name !== 'string') return 'Name must be a string.';
   const trimmed = name.trim();
-  if (trimmed.length === 0) {
-    return 'Name cannot be empty.';
-  }
-  if (trimmed.length > MAX_NAME_LENGTH) {
-    return `Name must not exceed ${MAX_NAME_LENGTH} characters.`;
-  }
+  if (trimmed.length === 0) return 'Name cannot be empty.';
+  if (trimmed.length > MAX_NAME_LENGTH) return `Name must not exceed ${MAX_NAME_LENGTH} characters.`;
   return null;
 }
 
-/**
- * FIX #6: Generate cryptographically secure token
- */
-function generateSecureToken() {
-  return crypto.randomBytes(32).toString('hex');
-}
-
-/**
- * FIX #6: Create JWT token
- */
 function createJWTToken(payload) {
   try {
-    return jwt.sign(payload, config.jwtSecret, { 
-      expiresIn: config.tokenExpiry,
-      algorithm: 'HS256'
-    });
+    return jwt.sign(payload, config.jwtSecret, { expiresIn: config.tokenExpiry, algorithm: 'HS256' });
   } catch (error) {
     log('error', 'JWT creation failed', { error: error.message });
     throw new Error('Failed to create token');
   }
 }
 
-/**
- * FIX #6: Verify JWT token
- */
 function verifyJWTToken(token) {
   try {
-    return jwt.verify(token, config.jwtSecret, { 
-      algorithms: ['HS256'] 
-    });
+    return jwt.verify(token, config.jwtSecret, { algorithms: ['HS256'] });
   } catch (error) {
     log('warn', 'Token verification failed', { error: error.message });
     return null;
@@ -192,16 +129,12 @@ function verifyJWTToken(token) {
 // RATE LIMITING - FIX #9
 // ============================================================================
 
-/**
- * FIX #9: Check general rate limit (60 requests per minute)
- */
 function checkRateLimit(ip) {
   const now = Date.now();
   const bucket = rateLimit.get(ip) || [];
   const recent = bucket.filter(timestamp => now - timestamp < RATE_LIMIT_WINDOW_MS);
   recent.push(now);
   rateLimit.set(ip, recent);
-  
   if (recent.length > RATE_LIMIT_MAX_REQUESTS) {
     log('warn', 'Rate limit exceeded', { ip, limit: RATE_LIMIT_MAX_REQUESTS });
     return false;
@@ -209,16 +142,12 @@ function checkRateLimit(ip) {
   return true;
 }
 
-/**
- * FIX #9: Check auth rate limit (5 requests per 15 minutes)
- */
 function checkAuthRateLimit(ip) {
   const now = Date.now();
   const bucket = authRateLimit.get(ip) || [];
   const recent = bucket.filter(timestamp => now - timestamp < AUTH_RATE_LIMIT_WINDOW_MS);
   recent.push(now);
   authRateLimit.set(ip, recent);
-  
   if (recent.length > AUTH_RATE_LIMIT_MAX_REQUESTS) {
     log('warn', 'Auth rate limit exceeded', { ip, limit: AUTH_RATE_LIMIT_MAX_REQUESTS });
     return false;
@@ -231,15 +160,12 @@ function checkAuthRateLimit(ip) {
 // ============================================================================
 
 function applySecurityHeaders(res) {
-  // Existing security headers
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self';");
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   res.setHeader('X-XSS-Protection', '1; mode=block');
-  
-  // FIX #4: CORS headers
   res.setHeader('Access-Control-Allow-Origin', config.corsOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -250,14 +176,9 @@ function applySecurityHeaders(res) {
 // INPUT VALIDATION & SANITIZATION - FIX #5, #13
 // ============================================================================
 
-/**
- * FIX #13: Parse body with size limit
- */
 function parseBody(req) {
   if (req.body) {
-    if (typeof req.body === 'string') {
-      return Promise.resolve(JSON.parse(req.body));
-    }
+    if (typeof req.body === 'string') return Promise.resolve(JSON.parse(req.body));
     return Promise.resolve(req.body);
   }
 
@@ -267,7 +188,6 @@ function parseBody(req) {
 
     req.on('data', chunk => {
       size += chunk.length;
-      // FIX #13: Check payload size limit
       if (size > config.maxPayloadSize) {
         reject(new Error(`Payload exceeds maximum size of ${config.maxPayloadSize} bytes`));
         return;
@@ -277,14 +197,10 @@ function parseBody(req) {
 
     req.on('end', () => {
       try {
-        // FIX #5: Validate JSON before parsing
         const parsed = body ? JSON.parse(body) : {};
-        
-        // FIX #5: Basic JSON injection prevention
         if (typeof parsed !== 'object' || parsed === null) {
           return reject(new Error('Invalid JSON structure'));
         }
-        
         resolve(parsed);
       } catch (error) {
         reject(new Error('Failed to parse JSON: ' + error.message));
@@ -295,41 +211,11 @@ function parseBody(req) {
   });
 }
 
-/**
- * FIX #5: Sanitize object to prevent injection
- */
-function sanitizeInput(input) {
-  if (typeof input === 'string') {
-    return input.trim().slice(0, 1200); // Limit string length
-  }
-  if (typeof input === 'object' && input !== null && !Array.isArray(input)) {
-    const sanitized = {};
-    for (const [key, value] of Object.entries(input)) {
-      if (typeof value === 'string') {
-        sanitized[key] = value.trim().slice(0, 1200);
-      } else if (typeof value === 'number' || typeof value === 'boolean') {
-        sanitized[key] = value;
-      }
-    }
-    return sanitized;
-  }
-  return input;
-}
-
-/**
- * FIX #8 (Documentation): Validate prompt input
- */
 function validatePrompt(prompt) {
-  if (typeof prompt !== 'string') {
-    return 'Prompt must be a string.';
-  }
+  if (typeof prompt !== 'string') return 'Prompt must be a string.';
   const trimmed = prompt.trim();
-  if (trimmed.length < 3) {
-    return 'Prompt must be at least 3 characters long.';
-  }
-  if (trimmed.length > 1200) {
-    return 'Prompt is too long.';
-  }
+  if (trimmed.length < 3) return 'Prompt must be at least 3 characters long.';
+  if (trimmed.length > 1200) return 'Prompt is too long.';
   return null;
 }
 
@@ -337,45 +223,17 @@ function validatePrompt(prompt) {
 // AUTHENTICATION MIDDLEWARE - FIX #3
 // ============================================================================
 
-/**
- * FIX #3: Extract and verify token from Authorization header
- */
 function extractToken(req) {
   const authHeader = req.headers.authorization || '';
-  if (!authHeader.startsWith('Bearer ')) {
-    return null;
-  }
-  return authHeader.slice(7); // Remove 'Bearer ' prefix
+  if (!authHeader.startsWith('Bearer ')) return null;
+  return authHeader.slice(7);
 }
 
-/**
- * FIX #3: Middleware to verify authentication
- */
 function verifyAuthentication(req) {
   const token = extractToken(req);
-  if (!token) {
-    return null;
-  }
-  
+  if (!token) return null;
   const payload = verifyJWTToken(token);
-  if (!payload) {
-    return null;
-  }
-  
   return payload;
-}
-
-/**
- * FIX #3: Check if route is protected
- */
-function isProtectedRoute(pathname) {
-  const protectedRoutes = [
-    '/api/projects',
-    '/api/generate',
-    '/api/billing/checkout',
-    '/api/user/profile'
-  ];
-  return protectedRoutes.some(route => pathname.startsWith(route));
 }
 
 // ============================================================================
@@ -385,14 +243,12 @@ function isProtectedRoute(pathname) {
 function createJsonStore(filePath, fallback = []) {
   const resolvedPath = filePath || path.join(__dirname, 'data', 'store.json');
   const dir = path.dirname(resolvedPath);
-
   fs.mkdirSync(dir, { recursive: true });
 
   function read() {
     try {
       const raw = fs.readFileSync(resolvedPath, 'utf8');
-      const parsed = JSON.parse(raw);
-      return parsed;
+      return JSON.parse(raw);
     } catch (error) {
       log('warn', 'Failed to read JSON store', { path: resolvedPath, error: error.message });
       return fallback;
@@ -414,9 +270,7 @@ function createJsonStore(filePath, fallback = []) {
 function createStorage(storageFile, storageType = 'file', databaseUrl = '') {
   if (storageType === 'database' && databaseUrl) {
     return {
-      listProjects() {
-        return [];
-      },
+      listProjects() { return []; },
       createProject(project) {
         return {
           id: `db-${Date.now()}`,
@@ -432,7 +286,6 @@ function createStorage(storageFile, storageType = 'file', databaseUrl = '') {
 
   const resolvedPath = storageFile || path.join(__dirname, 'data', 'projects.json');
   const dir = path.dirname(resolvedPath);
-
   fs.mkdirSync(dir, { recursive: true });
 
   function readProjects() {
@@ -455,9 +308,7 @@ function createStorage(storageFile, storageType = 'file', databaseUrl = '') {
     }
   }
 
-  function listProjects() {
-    return readProjects();
-  }
+  function listProjects() { return readProjects(); }
 
   function createProject(project) {
     const projects = readProjects();
@@ -477,7 +328,7 @@ function createStorage(storageFile, storageType = 'file', databaseUrl = '') {
 }
 
 // ============================================================================
-// REQUEST HANDLER - ALL FIXES INTEGRATED
+// REQUEST HANDLER
 // ============================================================================
 
 function createHandler(options = {}) {
@@ -499,50 +350,35 @@ function createHandler(options = {}) {
     }
   }
 
-  /**
-   * FIX #1, #2: Register user with hashed password
-   */
   async function registerUser(payload) {
     const users = getUsers();
-    const existing = users.find(user => user.email === payload.email);
-    if (existing) {
+    if (users.find(user => user.email === payload.email)) {
       throw new Error('User already exists');
     }
-
-    // Hash password before storage
     const passwordHash = await hashPassword(payload.password);
-
     const user = {
       id: `user-${Date.now()}`,
       email: payload.email,
       name: payload.name || 'User',
-      passwordHash: passwordHash, // Store hash, not plaintext
+      passwordHash,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
     users.push(user);
     saveUsers(users);
-    
     log('info', 'User registered', { userId: user.id, email: user.email });
     return user;
   }
 
-  /**
-   * FIX #1: Authenticate user with bcrypt comparison
-   */
   async function authenticateUser(email, password) {
     const users = getUsers();
     const user = users.find(u => u.email === email);
-    if (!user) {
-      return null;
-    }
-
+    if (!user) return null;
     const isValid = await comparePassword(password, user.passwordHash);
     if (!isValid) {
       log('warn', 'Authentication failed', { email });
       return null;
     }
-
     log('info', 'User authenticated', { email });
     return user;
   }
@@ -551,17 +387,14 @@ function createHandler(options = {}) {
     const url = new URL(req.url, 'http://localhost');
     const ip = req.socket?.remoteAddress || 'unknown';
 
-    // Apply security headers (FIX #4)
     applySecurityHeaders(res);
 
-    // Handle OPTIONS requests for CORS preflight (FIX #4)
     if (req.method === 'OPTIONS') {
       res.writeHead(200);
       res.end();
       return;
     }
 
-    // Check general rate limit
     if (!checkRateLimit(ip)) {
       res.writeHead(429, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Too many requests' }));
@@ -569,27 +402,20 @@ function createHandler(options = {}) {
       return;
     }
 
-    // FIX #12: Log 404 errors
     const logRequest = (method, path, statusCode) => {
       log('info', 'HTTP Request', { method, path, statusCode, ip });
     };
 
-    // ========== HEALTH CHECK ==========
+    // HEALTH CHECK
     if (req.method === 'GET' && url.pathname === '/api/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ 
-        status: 'ok', 
-        service: 'x-ai-prototype', 
-        security: 'enabled',
-        timestamp: new Date().toISOString()
-      }));
+      res.end(JSON.stringify({ status: 'ok', service: 'x-ai-prototype', security: 'enabled', timestamp: new Date().toISOString() }));
       logRequest('GET', '/api/health', 200);
       return;
     }
 
-    // ========== GENERATE ENDPOINT ==========
+    // GENERATE ENDPOINT
     if (req.method === 'POST' && url.pathname === '/api/generate') {
-      // FIX #3: Verify authentication
       const auth = verifyAuthentication(req);
       if (!auth) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -599,7 +425,6 @@ function createHandler(options = {}) {
       }
 
       try {
-        // FIX #7: Add error handling for async operations
         const body = await parseBody(req);
         const prompt = body.prompt || '';
         const validationError = validatePrompt(prompt);
@@ -611,28 +436,22 @@ function createHandler(options = {}) {
           return;
         }
 
-        const summary = `Plan for: ${prompt}`;
         const response = {
           success: true,
           projectType: 'app',
-          summary,
+          summary: `Plan for: ${prompt}`,
           blueprint: {
             pages: ['Home'],
             features: ['Prompt-driven generation', 'Preview support', 'Security hardening'],
             techStack: ['Node.js', 'HTML/CSS/JS']
           },
-          security: {
-            headersApplied: true,
-            rateLimiting: true,
-            tokenValidation: true
-          },
+          security: { headersApplied: true, rateLimiting: true, tokenValidation: true },
           timestamp: new Date().toISOString()
         };
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(response));
         logRequest('POST', '/api/generate', 200);
       } catch (error) {
-        // FIX #7: Catch and handle async errors
         log('error', 'Generate endpoint error', { error: error.message });
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid request: ' + error.message }));
@@ -641,9 +460,8 @@ function createHandler(options = {}) {
       return;
     }
 
-    // ========== PROJECTS ENDPOINTS ==========
+    // PROJECTS ENDPOINTS
     if (req.method === 'POST' && url.pathname === '/api/projects') {
-      // FIX #3: Verify authentication
       const auth = verifyAuthentication(req);
       if (!auth) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -654,11 +472,7 @@ function createHandler(options = {}) {
 
       try {
         const body = await parseBody(req);
-        const title = body.title || 'Untitled project';
-        const prompt = body.prompt || '';
-        const projectType = body.projectType || 'app';
-        const validationError = validatePrompt(prompt);
-
+        const validationError = validatePrompt(body.prompt || '');
         if (validationError) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: validationError }));
@@ -666,12 +480,11 @@ function createHandler(options = {}) {
           return;
         }
 
-        const project = storage.createProject({ title, prompt, projectType });
+        const project = storage.createProject(body);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, project }));
         logRequest('POST', '/api/projects', 200);
       } catch (error) {
-        // FIX #7: Error handling
         log('error', 'Projects POST error', { error: error.message });
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Failed to create project' }));
@@ -681,7 +494,6 @@ function createHandler(options = {}) {
     }
 
     if (req.method === 'GET' && url.pathname === '/api/projects') {
-      // FIX #3: Verify authentication
       const auth = verifyAuthentication(req);
       if (!auth) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -696,7 +508,6 @@ function createHandler(options = {}) {
         res.end(JSON.stringify({ projects }));
         logRequest('GET', '/api/projects', 200);
       } catch (error) {
-        // FIX #7: Error handling
         log('error', 'Projects GET error', { error: error.message });
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Failed to list projects' }));
@@ -705,13 +516,11 @@ function createHandler(options = {}) {
       return;
     }
 
-    // ========== AUTH ENDPOINTS - STRICT RATE LIMITING ==========
+    // AUTH ENDPOINTS
     if (req.method === 'POST' && url.pathname === '/api/auth/register') {
-      // FIX #9: Stricter rate limiting for auth
       if (!checkAuthRateLimit(ip)) {
         res.writeHead(429, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Too many registration attempts. Try again later.' }));
-        log('warn', 'Auth rate limit exceeded for register', { ip });
         logRequest('POST', '/api/auth/register', 429);
         return;
       }
@@ -719,7 +528,6 @@ function createHandler(options = {}) {
       try {
         const body = await parseBody(req);
         
-        // FIX #2: Validate all input fields
         const emailError = validateEmail(body.email);
         if (emailError) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -745,21 +553,12 @@ function createHandler(options = {}) {
         }
 
         const user = await registerUser(body);
-        const token = createJWTToken({ 
-          userId: user.id, 
-          email: user.email,
-          iat: Math.floor(Date.now() / 1000)
-        });
+        const token = createJWTToken({ userId: user.id, email: user.email, iat: Math.floor(Date.now() / 1000) });
         
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ 
-          success: true, 
-          user: { id: user.id, email: user.email, name: user.name }, 
-          token 
-        }));
+        res.end(JSON.stringify({ success: true, user: { id: user.id, email: user.email, name: user.name }, token }));
         logRequest('POST', '/api/auth/register', 200);
       } catch (error) {
-        // FIX #7: Error handling
         log('error', 'Registration error', { error: error.message });
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: error.message }));
@@ -769,19 +568,15 @@ function createHandler(options = {}) {
     }
 
     if (req.method === 'POST' && url.pathname === '/api/auth/login') {
-      // FIX #9: Stricter rate limiting for auth
       if (!checkAuthRateLimit(ip)) {
         res.writeHead(429, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Too many login attempts. Try again later.' }));
-        log('warn', 'Auth rate limit exceeded for login', { ip });
         logRequest('POST', '/api/auth/login', 429);
         return;
       }
 
       try {
         const body = await parseBody(req);
-        
-        // FIX #2: Validate input
         if (!body.email || !body.password) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Email and password required' }));
@@ -797,21 +592,11 @@ function createHandler(options = {}) {
           return;
         }
 
-        const token = createJWTToken({ 
-          userId: user.id, 
-          email: user.email,
-          iat: Math.floor(Date.now() / 1000)
-        });
-        
+        const token = createJWTToken({ userId: user.id, email: user.email, iat: Math.floor(Date.now() / 1000) });
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ 
-          success: true, 
-          user: { id: user.id, email: user.email, name: user.name }, 
-          token 
-        }));
+        res.end(JSON.stringify({ success: true, user: { id: user.id, email: user.email, name: user.name }, token }));
         logRequest('POST', '/api/auth/login', 200);
       } catch (error) {
-        // FIX #7: Error handling
         log('error', 'Login error', { error: error.message });
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Login failed' }));
@@ -820,9 +605,8 @@ function createHandler(options = {}) {
       return;
     }
 
-    // ========== BILLING ENDPOINT ==========
+    // BILLING ENDPOINT
     if (req.method === 'POST' && url.pathname === '/api/billing/checkout') {
-      // FIX #3: Verify authentication
       const auth = verifyAuthentication(req);
       if (!auth) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -843,12 +627,11 @@ function createHandler(options = {}) {
           return;
         }
 
-        const amount = planPrices[planName];
         const invoice = {
           id: `invoice-${Date.now()}`,
           userId: auth.userId,
           planName,
-          amount,
+          amount: planPrices[planName],
           currency: 'USD',
           status: 'pending',
           issuedAt: new Date().toISOString()
@@ -862,7 +645,6 @@ function createHandler(options = {}) {
         res.end(JSON.stringify({ success: true, invoice }));
         logRequest('POST', '/api/billing/checkout', 200);
       } catch (error) {
-        // FIX #7: Error handling
         log('error', 'Billing error', { error: error.message });
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Checkout failed' }));
@@ -871,11 +653,10 @@ function createHandler(options = {}) {
       return;
     }
 
-    // ========== STATIC FILES ==========
+    // STATIC FILES
     if (req.method === 'GET' && url.pathname === '/') {
       try {
-        const filePath = path.join(__dirname, 'frontend', 'index.html');
-        const content = fs.readFileSync(filePath, 'utf8');
+        const content = fs.readFileSync(path.join(__dirname, 'frontend', 'index.html'), 'utf8');
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(content);
         logRequest('GET', '/', 200);
@@ -890,8 +671,7 @@ function createHandler(options = {}) {
 
     if (req.method === 'GET' && url.pathname === '/styles.css') {
       try {
-        const filePath = path.join(__dirname, 'frontend', 'styles.css');
-        const content = fs.readFileSync(filePath, 'utf8');
+        const content = fs.readFileSync(path.join(__dirname, 'frontend', 'styles.css'), 'utf8');
         res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
         res.end(content);
         logRequest('GET', '/styles.css', 200);
@@ -906,8 +686,7 @@ function createHandler(options = {}) {
 
     if (req.method === 'GET' && url.pathname === '/app.js') {
       try {
-        const filePath = path.join(__dirname, 'frontend', 'app.js');
-        const content = fs.readFileSync(filePath, 'utf8');
+        const content = fs.readFileSync(path.join(__dirname, 'frontend', 'app.js'), 'utf8');
         res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' });
         res.end(content);
         logRequest('GET', '/app.js', 200);
