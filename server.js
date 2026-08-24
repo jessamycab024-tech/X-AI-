@@ -26,7 +26,7 @@ function loadConfig() {
     port: Number(process.env.PORT || 3000),
     storageType: process.env.STORAGE_TYPE || 'file',
     databaseUrl: process.env.DATABASE_URL || '',
-    jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
+    jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-production-min-32-chars',
     nodeEnv: nodeEnv,
     bcryptRounds: Number(process.env.BCRYPT_ROUNDS || 10),
     maxPayloadSize: Number(process.env.MAX_PAYLOAD_SIZE || 1048576), // 1MB
