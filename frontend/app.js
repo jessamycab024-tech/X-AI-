@@ -16,9 +16,25 @@ document.addEventListener('DOMContentLoaded', () => {
     authStatus.style.color = isError ? '#fda4af' : '#86efac';
   }
 
+  function authHeaders(extra = {}) {
+    const base = { 'Content-Type': 'application/json', ...extra };
+    if (token) base['Authorization'] = `Bearer ${token}`;
+    return base;
+  }
+
   async function loadProjects() {
     try {
-      const response = await fetch('/api/projects');
+      const response = await fetch('/api/projects', {
+        headers: authHeaders()
+      });
+      if (!response.ok) {
+        // show friendly message if unauthorized or other error
+        if (response.status === 401) {
+          projectsList.innerHTML = '<li>Please sign in to see projects.</li>';
+          return;
+        }
+        throw new Error(`Failed to load projects (${response.status})`);
+      }
       const json = await response.json();
       if (!json.projects || !json.projects.length) {
         projectsList.innerHTML = '<li>No projects yet.</li>';
@@ -28,19 +44,27 @@ document.addEventListener('DOMContentLoaded', () => {
         <li><strong>${project.title}</strong><br>${project.prompt}</li>
       `).join('');
     } catch (error) {
-      projectsList.innerHTML = '<li>Unable to load projects.</li>';
+      projectsList.innerHTML = `<li>Unable to load projects: ${error.message}</li>`;
     }
   }
 
   async function saveProject(project) {
-    const response = await fetch('/api/projects', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(project)
-    });
-    const json = await response.json();
-    if (json.project) {
-      await loadProjects();
+    try {
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(project)
+      });
+      if (!response.ok) {
+        const txt = await response.text();
+        throw new Error(txt || 'Failed to save project');
+      }
+      const json = await response.json();
+      if (json.project) {
+        await loadProjects();
+      }
+    } catch (err) {
+      results.innerHTML = `<p>Save project failed: ${err.message}</p>`;
     }
   }
 
@@ -53,9 +77,18 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const response = await fetch('/api/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ prompt })
       });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          results.innerHTML = '<p>Unauthorized — please sign in.</p>';
+          return;
+        }
+        const txt = await response.text();
+        throw new Error(txt || `Generation failed (${response.status})`);
+      }
 
       const json = await response.json();
       results.innerHTML = `
@@ -92,6 +125,8 @@ document.addEventListener('DOMContentLoaded', () => {
       setAuthStatus(`Signed in as ${json.user.email}`);
       authPanel.style.display = 'none';
       billingPanel.style.display = 'block';
+      // reload projects with token now set
+      await loadProjects();
     } catch (error) {
       setAuthStatus(error.message, true);
     }
@@ -104,13 +139,20 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const response = await fetch('/api/billing/checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ planName })
       });
-      const json = await response.json();
+
       if (!response.ok) {
-        throw new Error(json.error || 'Checkout failed');
+        if (response.status === 401) {
+          results.innerHTML = '<p>Unauthorized — please sign in.</p>';
+          return;
+        }
+        const txt = await response.text();
+        throw new Error(txt || `Checkout failed (${response.status})`);
       }
+
+      const json = await response.json();
       results.innerHTML = `<h2>Checkout created</h2><pre>${JSON.stringify(json.invoice, null, 2)}</pre>`;
     } catch (error) {
       results.innerHTML = `<p>Checkout failed: ${error.message}</p>`;

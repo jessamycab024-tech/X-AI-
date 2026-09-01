@@ -164,7 +164,9 @@ function applySecurityHeaders(res) {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self';");
-  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  if (config.nodeEnv === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Access-Control-Allow-Origin', config.corsOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -176,9 +178,16 @@ function applySecurityHeaders(res) {
 // INPUT VALIDATION & SANITIZATION - FIX #5, #13
 // ============================================================================
 
+// Safer parseBody: handle pre-populated req.body string safely
 function parseBody(req) {
   if (req.body) {
-    if (typeof req.body === 'string') return Promise.resolve(JSON.parse(req.body));
+    if (typeof req.body === 'string') {
+      try {
+        return Promise.resolve(JSON.parse(req.body));
+      } catch (err) {
+        return Promise.reject(new Error('Invalid JSON in request body'));
+      }
+    }
     return Promise.resolve(req.body);
   }
 
@@ -190,6 +199,7 @@ function parseBody(req) {
       size += chunk.length;
       if (size > config.maxPayloadSize) {
         reject(new Error(`Payload exceeds maximum size of ${config.maxPayloadSize} bytes`));
+        req.socket.destroy();
         return;
       }
       body += chunk.toString();
@@ -207,7 +217,7 @@ function parseBody(req) {
       }
     });
 
-    req.on('error', reject);
+    req.on('error', (err) => reject(err));
   });
 }
 
