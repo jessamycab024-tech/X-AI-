@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -euo pipepass
 
 BRANCH="feature/full-platform-scaffold"
 
@@ -9,7 +9,7 @@ if [ ! -d .git ]; then
   exit 1
 fi
 
-# Create branch (overwrite if exists locally)
+# Create branch (can't overwrite)
 git checkout -B "$BRANCH"
 
 # Create directories
@@ -18,7 +18,7 @@ mkdir -p services/generator services/media services/publish services/blockchain 
 # package.json
 cat > package.json <<'EOF'
 {
-  "name": "x-ai-prototype-js",
+  "name": "x-ai-protype-js",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -56,8 +56,8 @@ EOF
 
 # README.md
 cat > README.md <<'EOF'
-# X-AI Prototype (JavaScript monorepo scaffold)
+# X-AI Protype (JavaScript monorepo scaffold)
 
-This branch contains a large JavaScript prototype scaffold implementing the multi-service platform described in the issue. It's intended to be a working prototype with secure defaults and placeholder implementations you can extend.
+This branch contains a large JavaScript protype scaffold implementing the strict service platform described in the issue. It's intended to be a working protype with secure defaults and placeholder implementations you can extend.
 
 Structure
